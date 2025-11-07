@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IPTV Administration Panel</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Use Inter Font -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div id="app" class="max-w-4xl mx-auto p-4 sm:p-6 lg:p-8">
+        <header class="bg-white shadow rounded-lg p-4 mb-6">
+            <h1 class="text-3xl font-extrabold text-blue-700">IPTV Admin Dashboard</h1>
+            <p class="text-gray-500 mt-1" id="auth-status">Initializing...</p>
+        </header>
+
+        <div id="loading-overlay" class="fixed inset-0 bg-white bg-opacity-70 flex items-center justify-center z-50 hidden">
+            <div class="flex items-center space-x-2 text-blue-600">
+                <svg class="animate-spin h-5 w-5 mr-3 text-blue-500" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span>Loading Data...</span>
+            </div>
+        </div>
+
+        <!-- Tab Navigation -->
+        <nav class="flex space-x-2 border-b border-gray-200 mb-6">
+            <button onclick="showTab('dashboard')" id="tab-dashboard" class="py-2 px-4 text-sm font-medium rounded-t-lg transition-colors duration-150 bg-blue-500 text-white shadow-md">Dashboard</button>
+            <button onclick="showTab('users')" id="tab-users" class="py-2 px-4 text-sm font-medium rounded-t-lg transition-colors duration-150 text-gray-500 hover:text-blue-600">User Management</button>
+            <button onclick="showTab('m3u')" id="tab-m3u" class="py-2 px-4 text-sm font-medium rounded-t-lg transition-colors duration-150 text-gray-500 hover:text-blue-600">M3U Sources</button>
+        </nav>
+
+        <!-- Dashboard Tab -->
+        <section id="dashboard" class="tab-content">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Panel Overview</h2>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div class="bg-white rounded-lg shadow-md p-5 border-l-4 border-blue-500">
+                    <p class="text-sm font-medium text-gray-500">Total Active Users</p>
+                    <p class="text-3xl font-bold text-gray-900 mt-1" id="stat-active-users">0</p>
+                </div>
+                <div class="bg-white rounded-lg shadow-md p-5 border-l-4 border-green-500">
+                    <p class="text-sm font-medium text-gray-500">M3U Sources Online</p>
+                    <p class="text-3xl font-bold text-gray-900 mt-1" id="stat-m3u-online">0</p>
+                </div>
+                <div class="bg-white rounded-lg shadow-md p-5 border-l-4 border-red-500">
+                    <p class="text-sm font-medium text-gray-500">Users Expiring Soon</p>
+                    <p class="text-3xl font-bold text-gray-900 mt-1" id="stat-expiring-users">0</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- User Management Tab -->
+        <section id="users" class="tab-content hidden">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">User Management</h2>
+            <button onclick="openUserModal()" class="bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-150 mb-4 flex items-center">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM12 10H8m6 10H8"></path></svg>
+                Add New User
+            </button>
+
+            <!-- Users Table -->
+            <div class="bg-white rounded-lg shadow-md overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Username</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">M3U Source</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expires</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200" id="users-table-body">
+                        <!-- User rows will be injected here -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- M3U Source Management Tab -->
+        <section id="m3u" class="tab-content hidden">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">M3U Source Management</h2>
+            <button onclick="openM3uModal()" class="bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-150 mb-4 flex items-center">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                Add New M3U Source
+            </button>
+
+            <!-- M3U Sources Table -->
+            <div class="bg-white rounded-lg shadow-md overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source Name</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">URL (Partial)</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200" id="m3u-table-body">
+                        <!-- M3U rows will be injected here -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Message/Clipboard Modal -->
+        <div id="message-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden z-50 flex items-center justify-center p-4" onclick="closeMessageModal(event)">
+            <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 transform transition-all duration-300" onclick="event.stopPropagation()">
+                <h3 class="text-xl font-bold text-gray-800 mb-4" id="message-modal-title"></h3>
+                <div class="text-gray-600 space-y-3" id="message-modal-content"></div>
+                <div class="mt-6 flex justify-end">
+                    <button onclick="closeMessageModal()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-150 shadow-md">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- User Form Modal -->
+        <div id="user-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden z-50 flex items-center justify-center p-4" onclick="closeUserModal(event)">
+            <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 transform transition-all duration-300" onclick="event.stopPropagation()">
+                <h3 class="text-xl font-bold text-gray-800 mb-4" id="user-modal-title">Add New User</h3>
+                <form id="user-form" onsubmit="handleUserSubmit(event)">
+                    <input type="hidden" id="user-id">
+                    <div class="space-y-4">
+                        <div>
+                            <label for="username" class="block text-sm font-medium text-gray-700">Username</label>
+                            <input type="text" id="username" required class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
+                        </div>
+                        <div>
+                            <label for="password" class="block text-sm font-medium text-gray-700">Password</label>
+                            <input type="password" id="password" required class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
+                        </div>
+                        <div>
+                            <label for="expirationDate" class="block text-sm font-medium text-gray-700">Expiration Date</label>
+                            <input type="date" id="expirationDate" required class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
+                        </div>
+                        <div>
+                            <label for="assignedM3uId" class="block text-sm font-medium text-gray-700">Assign M3U Source</label>
+                            <select id="assignedM3uId" required class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border bg-white">
+                                <!-- Options populated by JavaScript -->
+                            </select>
+                            <p class="text-xs text-gray-500 mt-1">Make sure you have added M3U sources first.</p>
+                        </div>
+                    </div>
+                    <div class="mt-6 flex justify-end space-x-3">
+                        <button type="button" onclick="closeUserModal()" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-lg transition duration-150">Cancel</button>
+                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-150 shadow-md" id="user-form-button">Save User</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- M3U Form Modal -->
+        <div id="m3u-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden z-50 flex items-center justify-center p-4" onclick="closeM3uModal(event)">
+            <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 transform transition-all duration-300" onclick="event.stopPropagation()">
+                <h3 class="text-xl font-bold text-gray-800 mb-4" id="m3u-modal-title">Add New M3U Source</h3>
+                <form id="m3u-form" onsubmit="handleM3uSubmit(event)">
+                    <input type="hidden" id="m3u-id">
+                    <div class="space-y-4">
+                        <div>
+                            <label for="m3u-name" class="block text-sm font-medium text-gray-700">Source Name</label>
+                            <input type="text" id="m3u-name" required class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
+                        </div>
+                        <div>
+                            <label for="m3u-url" class="block text-sm font-medium text-gray-700">Full M3U URL</label>
+                            <input type="url" id="m3u-url" required class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border" placeholder="e.g., http://yourprovider.com:8080/get.php?username={user}&password={pass}&type=m3u_plus&output=ts">
+                            <p class="text-xs text-gray-500 mt-1">Use placeholder `{user}` and `{pass}` if your provider requires credentials.</p>
+                        </div>
+                    </div>
+                    <div class="mt-6 flex justify-end space-x-3">
+                        <button type="button" onclick="closeM3uModal()" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-lg transition duration-150">Cancel</button>
+                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-150 shadow-md" id="m3u-form-button">Save Source</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+    </div>
+
+    <script type="module">
+        // Firebase Imports
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, collection, query, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global Variables
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // Firestore Collection Paths
+        const PATH_USERS = (userId) => `artifacts/${appId}/users/${userId}/iptv_users`;
+        const PATH_M3U_SOURCES = (userId) => `artifacts/${appId}/users/${userId}/iptv_sources`;
+        const PATH_PUBLIC_CREDENTIALS = () => `artifacts/${appId}/public/data/client_credentials`;
+
+        let db, auth, userId = null;
+        let users = [];
+        let m3uSources = {}; // Store as object for easy lookup {id: data}
+
+        // --- Core Initialization ---
+
+        const initializeFirebase = async () => {
+            try {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                setLogLevel('Debug');
+
+                document.getElementById('loading-overlay').classList.remove('hidden');
+
+                // 1. Authenticate
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                // 2. Auth State Listener
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        document.getElementById('auth-status').textContent = `Admin ID: ${userId}`;
+                        setupRealtimeListeners();
+                    } else {
+                        document.getElementById('auth-status').textContent = 'Authentication Failed.';
+                        document.getElementById('loading-overlay').classList.add('hidden');
+                    }
+                });
+
+            } catch (error) {
+                console.error("Firebase Initialization or Auth Error:", error);
+                document.getElementById('auth-status').textContent = `Error: ${error.message}`;
+                document.getElementById('loading-overlay').classList.add('hidden');
+            }
+        };
+
+        const setupRealtimeListeners = () => {
+            // M3U Sources Listener (Private)
+            const m3uCollectionRef = collection(db, PATH_M3U_SOURCES(userId));
+            onSnapshot(m3uCollectionRef, (snapshot) => {
+                m3uSources = {};
+                snapshot.docs.forEach(doc => {
+                    m3uSources[doc.id] = { id: doc.id, ...doc.data() };
+                });
+                renderM3uSources();
+                populateM3uDropdown();
+                updateDashboardStats();
+            }, (error) => {
+                console.error("Error fetching M3U sources:", error);
+            });
+
+            // Users Listener (Private)
+            const usersCollectionRef = collection(db, PATH_USERS(userId));
+            onSnapshot(usersCollectionRef, (snapshot) => {
+                users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                renderUsers();
+                updateDashboardStats();
+                document.getElementById('loading-overlay').classList.add('hidden');
+            }, (error) => {
+                console.error("Error fetching users:", error);
+                document.getElementById('loading-overlay').classList.add('hidden');
+            });
+        };
+
+        // --- UI Rendering ---
+
+        window.showTab = (tabName) => {
+            document.querySelectorAll('.tab-content').forEach(section => {
+                section.classList.add('hidden');
+            });
+            document.getElementById(tabName).classList.remove('hidden');
+
+            document.querySelectorAll('nav button').forEach(button => {
+                button.classList.remove('bg-blue-500', 'text-white', 'shadow-md');
+                button.classList.add('text-gray-500', 'hover:text-blue-600');
+            });
+            document.getElementById(`tab-${tabName}`).classList.add('bg-blue-500', 'text-white', 'shadow-md');
+            document.getElementById(`tab-${tabName}`).classList.remove('text-gray-500', 'hover:text-blue-600');
+        };
+
+        const updateDashboardStats = () => {
+            const now = Date.now();
+            let activeUsers = 0;
+            let expiringUsers = 0;
+
+            users.forEach(user => {
+                const expiry = new Date(user.expirationDate).getTime();
+                if (expiry > now) {
+                    activeUsers++;
+                }
+                // Expiring soon (e.g., next 7 days)
+                if (expiry > now && expiry < now + (7 * 24 * 60 * 60 * 1000)) {
+                    expiringUsers++;
+                }
+            });
+
+            const onlineM3u = Object.values(m3uSources).filter(s => s.status === 'Online').length;
+
+            document.getElementById('stat-active-users').textContent = activeUsers;
+            document.getElementById('stat-m3u-online').textContent = onlineM3u;
+            document.getElementById('stat-expiring-users').textContent = expiringUsers;
+        };
+
+        const renderUsers = () => {
+            const tableBody = document.getElementById('users-table-body');
+            tableBody.innerHTML = '';
+
+            if (users.length === 0) {
+                tableBody.innerHTML = `<tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">No users found. Add one above!</td></tr>`;
+                return;
+            }
+
+            users.sort((a, b) => new Date(a.expirationDate) - new Date(b.expirationDate)).forEach(user => {
+                const expirationDate = new Date(user.expirationDate);
+                const isExpired = expirationDate.getTime() < Date.now();
+                const statusText = isExpired ? 'Expired' : 'Active';
+                const statusClass = isExpired ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800';
+
+                const m3uSource = m3uSources[user.assignedM3uId] ? m3uSources[user.assignedM3uId].name : 'Unassigned/Deleted';
+
+                const row = tableBody.insertRow();
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${user.username}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${m3uSource}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusClass}">
+                            ${statusText}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${user.expirationDate}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+                        <button onclick="copyUserM3u('${user.id}')" class="text-blue-600 hover:text-blue-900 transition-colors duration-150">M3U Link</button>
+                        <button onclick="editUser('${user.id}')" class="text-indigo-600 hover:text-indigo-900 transition-colors duration-150">Edit</button>
+                        <button onclick="deleteUser('${user.id}')" class="text-red-600 hover:text-red-900 transition-colors duration-150">Delete</button>
+                    </td>
+                `;
+            });
+        };
+
+        const renderM3uSources = () => {
+            const tableBody = document.getElementById('m3u-table-body');
+            tableBody.innerHTML = '';
+
+            const sourcesArray = Object.values(m3uSources);
+            if (sourcesArray.length === 0) {
+                tableBody.innerHTML = `<tr><td colspan="4" class="px-6 py-4 text-center text-gray-500">No M3U sources found. Add one above!</td></tr>`;
+                return;
+            }
+
+            sourcesArray.forEach(source => {
+                const urlDisplay = source.url.length > 50 ? source.url.substring(0, 47) + '...' : source.url;
+                const statusClass = source.status === 'Online' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800';
+
+                const row = tableBody.insertRow();
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${source.name}</td>
+                    <td class="px-6 py-4 text-sm text-gray-500 break-words max-w-xs">${urlDisplay}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusClass}">
+                            ${source.status}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+                        <button onclick="editM3u('${source.id}')" class="text-indigo-600 hover:text-indigo-900 transition-colors duration-150">Edit</button>
+                        <button onclick="deleteM3u('${source.id}')" class="text-red-600 hover:text-red-900 transition-colors duration-150">Delete</button>
+                    </td>
+                `;
+            });
+        };
+
+        const populateM3uDropdown = () => {
+            const select = document.getElementById('assignedM3uId');
+            select.innerHTML = '<option value="" disabled selected>Select an M3U Source</option>';
+            Object.values(m3uSources).forEach(source => {
+                const option = document.createElement('option');
+                option.value = source.id;
+                option.textContent = source.name;
+                select.appendChild(option);
+            });
+        };
+
+        // --- User Management CRUD ---
+
+        window.openUserModal = (user = null) => {
+            const modal = document.getElementById('user-modal');
+            const form = document.getElementById('user-form');
+            form.reset();
+            document.getElementById('user-id').value = '';
+            document.getElementById('user-modal-title').textContent = 'Add New User';
+            document.getElementById('user-form-button').textContent = 'Create User';
+
+            if (user) {
+                document.getElementById('user-modal-title').textContent = 'Edit User';
+                document.getElementById('user-form-button').textContent = 'Save Changes';
+                document.getElementById('user-id').value = user.id;
+                document.getElementById('username').value = user.username;
+                // Note: We don't populate password for security
+                document.getElementById('expirationDate').value = user.expirationDate;
+                document.getElementById('assignedM3uId').value = user.assignedM3uId;
+            }
+            modal.classList.remove('hidden');
+        };
+
+        window.closeUserModal = (event) => {
+            if (!event || event.target.id === 'user-modal') {
+                document.getElementById('user-modal').classList.add('hidden');
+            }
+        };
+
+        window.handleUserSubmit = async (event) => {
+            event.preventDefault();
+            const id = document.getElementById('user-id').value;
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value.trim();
+            const expirationDate = document.getElementById('expirationDate').value;
+            const assignedM3uId = document.getElementById('assignedM3uId').value;
+
+            if (!username || !password || !expirationDate || !assignedM3uId) {
+                return showMessage('Validation Error', 'All fields are required.');
+            }
+
+            // 1. Private Admin Record (Full details)
+            const userData = { username, password, expirationDate, assignedM3uId, status: 'Active' };
+            const usersCollectionRef = collection(db, PATH_USERS(userId));
+
+            // 2. Public Client Record (Only what's needed for access)
+            const publicCredentialData = {
+                username,
+                password,
+                assignedM3uId,
+                expirationDate, // Required for security rules check
+                adminId: userId // Link to the admin who created it (optional but good practice)
+            };
+            const publicDocRef = doc(db, PATH_PUBLIC_CREDENTIALS(), username); // Use username as the public document ID
+
+            try {
+                if (id) {
+                    // --- UPDATE LOGIC ---
+                    const userDocRef = doc(db, usersCollectionRef.path, id);
+                    await updateDoc(userDocRef, userData);
+                    
+                    // Update the public credential record
+                    await setDoc(publicDocRef, publicCredentialData, { merge: true });
+
+                    showMessage('Success', `User ${username} updated successfully and public access credentials synchronized!`);
+
+                } else {
+                    // --- CREATE LOGIC ---
+                    
+                    // Check if a user with this username already exists in the private list
+                    if (users.some(u => u.username === username)) {
+                        return showMessage('Error', 'This username already exists in your private list. Please choose a unique username.');
+                    }
+                    
+                    // Add new user to Private Admin Record
+                    const newDocRef = await addDoc(usersCollectionRef, userData);
+                    
+                    // Create the public credential record
+                    await setDoc(publicDocRef, publicCredentialData);
+
+                    showMessage('Success', `User ${username} created successfully and public access credentials synchronized!`);
+                }
+                closeUserModal();
+            } catch (e) {
+                console.error("Error saving user:", e);
+                showMessage('Error', `Failed to save user: ${e.message}`);
+            }
+        };
+
+        window.editUser = (userId) => {
+            const user = users.find(u => u.id === userId);
+            if (user) {
+                openUserModal(user);
+            }
+        };
+
+        window.deleteUser = async (id) => {
+            const user = users.find(u => u.id === id);
+            if (!user) return;
+
+            // Use a custom message box instead of alert/confirm
+            showMessage('Confirm Deletion', `Are you sure you want to delete user: ${user.username}? This will also remove their public access credentials.`, true, async () => {
+                try {
+                    // 1. Delete Private Admin Record
+                    const userDocRef = doc(db, PATH_USERS(userId), id);
+                    await deleteDoc(userDocRef);
+                    
+                    // 2. Delete Public Credential Record
+                    const publicDocRef = doc(db, PATH_PUBLIC_CREDENTIALS(), user.username);
+                    await deleteDoc(publicDocRef);
+
+                    showMessage('Success', `User ${user.username} deleted and public credentials removed.`);
+                } catch (e) {
+                    console.error("Error deleting user:", e);
+                    showMessage('Error', `Failed to delete user: ${e.message}`);
+                }
+            });
+        };
+
+        window.copyUserM3u = (id) => {
+            const user = users.find(u => u.id === id);
+            if (!user) return showMessage('Error', 'User not found.');
+
+            const source = m3uSources[user.assignedM3uId];
+            if (!source) return showMessage('Error', 'M3U Source not assigned or deleted. Please edit the user.');
+
+            // Replace placeholders in the M3U URL
+            const m3uLink = source.url
+                .replace('{user}', user.username)
+                .replace('{pass}', user.password);
+
+            const content = `
+                <p class="text-sm">
+                    This is the M3U link your client uses. It relies on the username/password pair existing in the **public Firestore path** to be valid.
+                </p>
+                <p><strong>Username:</strong> ${user.username}</p>
+                <p><strong>Password:</strong> ${user.password}</p>
+                <p class="mt-4"><strong>Client M3U URL:</strong></p>
+                <div class="p-3 bg-gray-100 rounded-lg break-all text-sm" id="m3u-link-text">${m3uLink}</div>
+                <button onclick="copyToClipboard('${m3uLink}')" class="mt-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg transition duration-150 shadow-md w-full">Copy Link</button>
+            `;
+            showMessage('User M3U Link (Publicly Accessible)', content);
+        };
+
+        // --- M3U Source Management CRUD (NO CHANGES REQUIRED HERE) ---
+
+        window.openM3uModal = (source = null) => {
+            const modal = document.getElementById('m3u-modal');
+            const form = document.getElementById('m3u-form');
+            form.reset();
+            document.getElementById('m3u-id').value = '';
+            document.getElementById('m3u-modal-title').textContent = 'Add New M3U Source';
+            document.getElementById('m3u-form-button').textContent = 'Create Source';
+
+            if (source) {
+                document.getElementById('m3u-modal-title').textContent = 'Edit M3U Source';
+                document.getElementById('m3u-form-button').textContent = 'Save Changes';
+                document.getElementById('m3u-id').value = source.id;
+                document.getElementById('m3u-name').value = source.name;
+                document.getElementById('m3u-url').value = source.url;
+            }
+            modal.classList.remove('hidden');
+        };
+
+        window.closeM3uModal = (event) => {
+            if (!event || event.target.id === 'm3u-modal') {
+                document.getElementById('m3u-modal').classList.add('hidden');
+            }
+        };
+
+        window.handleM3uSubmit = async (event) => {
+            event.preventDefault();
+            const id = document.getElementById('m3u-id').value;
+            const name = document.getElementById('m3u-name').value;
+            const url = document.getElementById('m3u-url').value;
+
+            const m3uData = {
+                name,
+                url,
+                status: 'Online', // Simulated status
+                lastChecked: new Date().toISOString()
+            };
+            const collectionRef = collection(db, PATH_M3U_SOURCES(userId));
+
+            try {
+                if (id) {
+                    // Update existing source
+                    const m3uDocRef = doc(db, collectionRef.path, id);
+                    await updateDoc(m3uDocRef, m3uData);
+                    showMessage('Success', `M3U Source "${name}" updated.`);
+                } else {
+                    // Add new source
+                    await addDoc(collectionRef, m3uData);
+                    showMessage('Success', `M3U Source "${name}" added.`);
+                }
+                closeM3uModal();
+            } catch (e) {
+                console.error("Error saving M3U source:", e);
+                showMessage('Error', `Failed to save M3U source: ${e.message}`);
+            }
+        };
+
+        window.editM3u = (m3uId) => {
+            const source = m3uSources[m3uId];
+            if (source) {
+                openM3uModal(source);
+            }
+        };
+
+        window.deleteM3u = async (id) => {
+            const source = m3uSources[id];
+            if (!source) return;
+
+            // Check if any users are assigned this source
+            const usersAssigned = users.filter(u => u.assignedM3uId === id);
+            if (usersAssigned.length > 0) {
+                showMessage('Action Required', `Cannot delete M3U Source "${source.name}". It is currently assigned to ${usersAssigned.length} user(s). Please reassign or delete those users first.`);
+                return;
+            }
+
+            showMessage('Confirm Deletion', `Are you sure you want to delete M3U Source: ${source.name}?`, true, async () => {
+                try {
+                    const m3uDocRef = doc(db, PATH_M3U_SOURCES(userId), id);
+                    await deleteDoc(m3uDocRef);
+                    showMessage('Success', `M3U Source "${source.name}" deleted.`);
+                } catch (e) {
+                    console.error("Error deleting M3U source:", e);
+                    showMessage('Error', `Failed to delete M3U source: ${e.message}`);
+                }
+            });
+        };
+
+
+        // --- Utility Functions (NO CHANGES REQUIRED HERE) ---
+
+        let currentConfirmAction = null;
+        window.showMessage = (title, content, isConfirm = false, confirmAction = null) => {
+            const modal = document.getElementById('message-modal');
+            document.getElementById('message-modal-title').textContent = title;
+            document.getElementById('message-modal-content').innerHTML = content;
+            currentConfirmAction = confirmAction;
+
+            const footer = modal.querySelector('.flex.justify-end');
+            footer.innerHTML = ''; // Clear existing buttons
+
+            if (isConfirm) {
+                // Add Cancel button
+                const cancelButton = document.createElement('button');
+                cancelButton.onclick = closeMessageModal;
+                cancelButton.className = 'bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-lg transition duration-150 mr-3';
+                cancelButton.textContent = 'Cancel';
+                footer.appendChild(cancelButton);
+
+                // Add Confirm button
+                const confirmButton = document.createElement('button');
+                confirmButton.onclick = () => {
+                    if (currentConfirmAction) {
+                        currentConfirmAction();
+                    }
+                    closeMessageModal();
+                };
+                confirmButton.className = 'bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-150 shadow-md';
+                confirmButton.textContent = 'Confirm';
+                footer.appendChild(confirmButton);
+            } else {
+                 // Add Close button
+                const closeButton = document.createElement('button');
+                closeButton.onclick = closeMessageModal;
+                closeButton.className = 'bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-150 shadow-md';
+                closeButton.textContent = 'Close';
+                footer.appendChild(closeButton);
+            }
+
+            modal.classList.remove('hidden');
+        };
+
+        window.closeMessageModal = (event) => {
+            if (!event || event.target.id === 'message-modal') {
+                document.getElementById('message-modal').classList.add('hidden');
+            }
+        };
+
+        window.copyToClipboard = (text) => {
+            try {
+                // Use execCommand('copy') as navigator.clipboard may not work in iframes
+                const tempInput = document.createElement("textarea");
+                tempInput.value = text;
+                document.body.appendChild(tempInput);
+                tempInput.select();
+                document.execCommand('copy');
+                document.body.removeChild(tempInput);
+                // Update the modal to show success, but don't close it automatically
+                const copyButton = document.querySelector('#message-modal button.bg-blue-500, #message-modal button.bg-blue-600');
+                if (copyButton) {
+                    copyButton.textContent = 'Copied!';
+                    setTimeout(() => {
+                        copyButton.textContent = 'Copy Link';
+                    }, 2000);
+                }
+            } catch (err) {
+                console.error('Failed to copy text: ', err);
+                // Fallback message
+                showMessage('Copy Failed', 'Please manually copy the link from the box below.', false);
+            }
+        };
+
+
+        // --- Start Application ---
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeFirebase();
+            showTab('dashboard'); // Default view
+        });
+
+    </script>
+</body>
+</html>
+
