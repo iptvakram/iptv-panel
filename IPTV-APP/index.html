@@ -1,902 +1,637 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>IPTV Adminstration Panel</title>
-  <!-- Load Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Use Inter Font -->
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>IPTV Panel - Local Website</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
-    body { font-family: 'Inter', sans-serif; }
-    /* Fix for long data truncation */
-    .truncate-data {
-        max-width: 300px; /* Adjust as needed */
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+    :root{
+      --bg:#f6f8fb; --card:#ffffff; --muted:#6b7280; --accent:#0f62fe;
+      --success:#059669; --danger:#ef4444; --glass: rgba(15,98,254,0.06);
     }
+    *{box-sizing:border-box;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;}
+    body{margin:0;background:var(--bg);color:#0f172a}
+    .wrap{max-width:1100px;margin:28px auto;padding:18px}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+    h1{font-size:20px;margin:0}
+    .card{background:var(--card);border-radius:12px;padding:14px;box-shadow:0 1px 2px rgba(2,6,23,0.06);margin-bottom:14px}
+    .grid{display:grid;gap:12px}
+    .cols-3{grid-template-columns:320px 1fr 360px}
+    label{display:block;font-size:13px;margin-bottom:6px;color:var(--muted)}
+    input[type="text"],input[type="password"],textarea,select{width:100%;padding:10px;border-radius:8px;border:1px solid #e6e9ef;font-size:14px;background:white}
+    textarea{min-height:120px;resize:vertical}
+    .btn{display:inline-block;padding:8px 12px;border-radius:8px;border:0;cursor:pointer;font-weight:600}
+    .btn-primary{background:var(--accent);color:white}
+    .btn-ghost{background:transparent;border:1px solid #e6e9ef}
+    .btn-danger{background:var(--danger);color:white}
+    .muted{color:var(--muted);font-size:13px}
+    .flex{display:flex;gap:8px;align-items:center}
+    .users-list{max-height:260px;overflow:auto}
+    .user-item{padding:8px;border-radius:8px;border:1px solid #f1f3f7;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+    .channels-list{max-height:420px;overflow:auto;border-radius:8px;border:1px solid #f1f3f7}
+    .channel-row{display:flex;gap:10px;align-items:center;padding:8px;border-bottom:1px solid #f6f8fb}
+    .channel-row:last-child{border-bottom:0}
+    .search{display:flex;gap:8px;margin-bottom:8px}
+    .small{font-size:13px;color:var(--muted)}
+    .topbar{display:flex;gap:8px;align-items:center}
+    .center{display:flex;flex-direction:column;gap:12px}
+    .right-panel{display:flex;flex-direction:column;gap:12px}
+    .login-overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(2,6,23,0.45)}
+    .login-box{width:360px;padding:18px;border-radius:12px;background:white}
+    .footer{margin-top:14px;color:var(--muted);font-size:13px;text-align:center}
+    .badge{background:var(--glass);padding:6px 8px;border-radius:999px;font-size:12px}
+    input[type="file"]{display:none}
+    .row{display:flex;gap:8px;align-items:center}
+    .flex-col{display:flex;flex-direction:column;gap:8px}
+    a.link{color:var(--accent);text-decoration:none}
+    .top-actions{display:flex;gap:8px;align-items:center}
+    @media(max-width:980px){ .cols-3{grid-template-columns:1fr} .wrap{padding:12px} .login-box{width:95%} }
   </style>
-
-  <!-- START FIREBASE SETUP: Load Modular SDKs -->
-  <script type="module">
-    // Import required functions from modular SDKs
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
-    import { getFirestore, doc, getDoc, addDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, getDocs, setLogLevel } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
-    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
-    
-    // Global Firebase instances and variables
-    let app, db, auth;
-    window.db = null; 
-    window.auth = null;
-    window.userId = null;
-    window.authReady = false;
-    window.availableM3USources = [];
-    window.uploadedM3UContent = null; // New global variable for file content
-
-    // Global variables for Canvas environment
-    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-    
-    // Firebase Initialization Function
-    function initializeFirebase() {
-        if (Object.keys(firebaseConfig).length === 0) {
-             console.error("Firebase Config missing. Using dummy local config.");
-             // Placeholder configuration if running outside the Canvas environment
-             const dummyConfig = {
-                  apiKey: "dummy-key",
-                  authDomain: "dummy-domain.firebaseapp.com",
-                  projectId: "iptv-bd853", 
-                  storageBucket: "dummy-bucket.appspot.com",
-                  messagingSenderId: "123456789012",
-                  appId: "1:123456789012:web:1234567890abcdef",
-                  measurementId: "G-XXXXXXXXXX"
-              };
-             app = initializeApp(dummyConfig);
-        } else {
-             app = initializeApp(firebaseConfig);
-        }
-        
-        db = getFirestore(app);
-        auth = getAuth(app);
-        
-        window.db = db;
-        window.auth = auth;
-        
-        // Log to debug Firestore rules issues
-        setLogLevel('debug'); 
-
-        // 1. Authenticate the user (using anonymous sign-in)
-        onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                window.userId = user.uid;
-                document.getElementById('auth-status').textContent = `Authenticated User ID: ${user.uid}`;
-            } else {
-                // If not signed in, sign in anonymously
-                await signInAnonymously(auth)
-                .then(credentials => {
-                    window.userId = credentials.user.uid;
-                    document.getElementById('auth-status').textContent = `Authenticated User ID: ${credentials.user.uid} (Anon)`;
-                })
-                .catch(error => {
-                    console.error("Anonymous sign-in failed:", error.message);
-                    showMessage('Auth Error', 'Failed to sign in. Check Firebase auth settings.');
-                });
-            }
-            window.authReady = true;
-            console.log("Dashboard initialization triggered.");
-            // 2. Start fetching data only after authentication is complete
-            initializeDashboard(); 
-        });
-    }
-
-    // --- Data Path Construction ---
-    function getCollectionPath(collectionName) {
-        if (!window.authReady || !window.userId) {
-            console.error("Attempted to access Firestore before authentication.");
-            return null;
-        }
-        // Use the private user path based on the security rules
-        return `artifacts/${appId}/users/${window.userId}/${collectionName}`;
-    }
-
-    // --- Main Dashboard Initialization ---
-    function initializeDashboard() {
-        if (!window.authReady) return;
-        
-        // Fetch all data listeners
-        fetchM3USources(); // Needed for user dropdown
-        fetchUsers();
-        fetchDashboardSummary();
-        
-        // Manually trigger the initial dashboard view tab highlight
-        showTab('dashboard');
-    }
-
-    // --- Helper Functions for UI/Modals ---
-
-    // Function to show custom message modal instead of alert()
-    function showMessage(title, message) {
-        document.getElementById('message-modal-title').textContent = title;
-        document.getElementById('message-modal-text').textContent = message;
-        document.getElementById('message-modal').classList.remove('hidden');
-        document.getElementById('message-modal').classList.add('flex');
-    }
-
-    window.closeMessageModal = function() {
-        document.getElementById('message-modal').classList.add('hidden');
-        document.getElementById('message-modal').classList.remove('flex');
-    }
-    
-    // Function to show/hide loading overlay
-    function showLoading() {
-      document.getElementById('loading-overlay').classList.remove('hidden');
-      document.getElementById('loading-overlay').classList.add('flex');
-    }
-    
-    function hideLoading() {
-      document.getElementById('loading-overlay').classList.add('hidden');
-      document.getElementById('loading-overlay').classList.remove('flex');
-    }
-
-    // Tab switching logic
-    window.showTab = function(tabId) {
-      const tabs = ['dashboard', 'user-management', 'm3u-sources'];
-      tabs.forEach(id => {
-        document.getElementById(id).classList.add('hidden');
-        document.getElementById(`tab-${id}`).classList.remove('bg-blue-600', 'text-white', 'hover:bg-blue-700', 'shadow-md');
-        document.getElementById(`tab-${id}`).classList.add('bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
-      });
-
-      document.getElementById(tabId).classList.remove('hidden');
-      document.getElementById(`tab-${tabId}`).classList.add('bg-blue-600', 'text-white', 'hover:bg-blue-700', 'shadow-md');
-      document.getElementById(`tab-${tabId}`).classList.remove('bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
-    }
-
-    // Modal functions for User Management
-    let editingUserId = null;
-
-    window.openUserModal = async function(userIdToEdit = null) {
-      editingUserId = userIdToEdit;
-      const modal = document.getElementById('user-modal');
-      const form = document.getElementById('user-form');
-      const title = document.getElementById('user-modal-title');
-      
-      form.reset();
-      
-      if (userIdToEdit) {
-        title.textContent = 'Edit User';
-        showLoading();
-        try {
-            const userDocRef = doc(window.db, getCollectionPath('users'), userIdToEdit);
-            const docSnap = await getDoc(userDocRef);
-            hideLoading();
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                document.getElementById('username').value = data.username || '';
-                document.getElementById('password').value = data.password || '';
-                document.getElementById('expirationDate').value = data.expirationDate || '';
-                document.getElementById('assignedM3Uid').value = data.assignedM3Uid || '';
-            }
-        } catch(error) {
-            hideLoading();
-            showMessage('Error', `Failed to load user data: ${error.message}`);
-        }
-      } else {
-        title.textContent = 'Add New User';
-      }
-      
-      // Populate M3U select options
-      populateM3USelect();
-      
-      modal.classList.remove('hidden');
-      modal.classList.add('flex');
-    }
-
-    window.closeUserModal = function() {
-      document.getElementById('user-modal').classList.add('hidden');
-      document.getElementById('user-modal').classList.remove('flex');
-    }
-
-    // Modal functions for M3U Source Management
-    let editingM3UId = null;
-
-    window.openM3UModal = async function(m3uIdToEdit = null) {
-      editingM3UId = m3uIdToEdit;
-      const modal = document.getElementById('m3u-modal');
-      const form = document.getElementById('m3u-form');
-      const title = document.getElementById('m3u-modal-title');
-      
-      form.reset();
-      window.uploadedM3UContent = null; // Reset global content variable
-      document.getElementById('m3uFile').value = ''; // Clear file input
-
-      if (m3uIdToEdit) {
-        title.textContent = 'Edit M3U Source';
-        showLoading();
-        try {
-            const m3uDocRef = doc(window.db, getCollectionPath('m3u_sources'), m3uIdToEdit);
-            const docSnap = await getDoc(m3uDocRef);
-            hideLoading();
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                document.getElementById('sourceName').value = data.name || '';
-                // Only populate the URL field if the type is 'url'
-                document.getElementById('sourceUrl').value = data.type === 'url' ? data.data : '';
-            }
-        } catch(error) {
-            hideLoading();
-            showMessage('Error', `Failed to load source data: ${error.message}`);
-        }
-      } else {
-        title.textContent = 'Add New M3U Source';
-      }
-      
-      modal.classList.remove('hidden');
-      modal.classList.add('flex');
-    }
-
-    window.closeM3UModal = function() {
-      document.getElementById('m3u-modal').classList.add('hidden');
-      document.getElementById('m3u-modal').classList.remove('flex');
-      window.uploadedM3UContent = null; // Clear global content on close
-    }
-    
-    // --- File Handling Logic ---
-
-    window.handleM3UFileUpload = function(event) {
-        const file = event.target.files[0];
-        if (file) {
-            if (file.size > 500000) { // Limit file size to 500KB to stay well under 1MB Firestore limit
-                showMessage('File Too Large', 'File size exceeds 500KB limit. Please use a smaller file or a URL.');
-                event.target.value = null; // Clear the file input
-                window.uploadedM3UContent = null;
-                return;
-            }
-
-            showLoading();
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                window.uploadedM3UContent = e.target.result;
-                // Clear the URL field if a file is uploaded
-                document.getElementById('sourceUrl').value = ''; 
-                hideLoading();
-                showMessage('File Ready', `Successfully read ${file.name}. Click 'Save Source' to store it.`);
-            };
-            reader.onerror = function(e) {
-                hideLoading();
-                window.uploadedM3UContent = null;
-                showMessage('File Error', 'Could not read file.');
-            };
-            reader.readAsText(file);
-        } else {
-            window.uploadedM3UContent = null;
-        }
-    }
-
-
-    // --- Firestore Data Operations (Modular SDK) ---
-
-    // M3U Sources Management
-    
-    // Fetch and populate M3U sources table and global variable using onSnapshot
-    function fetchM3USources() {
-        if (!window.authReady || !window.userId) return;
-        
-        const sourcesPath = getCollectionPath('m3u_sources');
-        if (!sourcesPath) return;
-
-        const sourcesColRef = collection(window.db, sourcesPath);
-        
-        onSnapshot(sourcesColRef, (snapshot) => {
-            const tableBody = document.getElementById('sources-table-body');
-            tableBody.innerHTML = ''; 
-            window.availableM3USources = [];
-
-            if (snapshot.empty) {
-                tableBody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center text-gray-500">No M3U sources added yet.</td></tr>';
-                return;
-            }
-
-            snapshot.forEach(doc => {
-                const source = { id: doc.id, ...doc.data() };
-                window.availableM3USources.push(source); 
-                
-                // Determine what to display in the URL column
-                const displayData = source.type === 'url' 
-                    ? source.data 
-                    : `[File Content: ${source.data.substring(0, 100)}...]`; 
-                const dataType = source.type === 'url' ? 'URL' : 'File';
-
-                const row = tableBody.insertRow();
-                row.innerHTML = `
-                    <td class="px-6 py-4 whitespace-nowrap">${source.name}</td>
-                    <td class="px-6 py-4 truncate-data max-w-xs" title="${displayData}">${displayData}</td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">${dataType}</span>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <button onclick="openM3UModal('${source.id}')" class="text-indigo-600 hover:text-indigo-900 mr-2">Edit</button>
-                        <button onclick="deleteM3USource('${source.id}')" class="text-red-600 hover:text-red-900">Delete</button>
-                    </td>
-                `;
-            });
-            // Update the user modal select options after fetching sources
-            if (document.getElementById('user-modal').classList.contains('flex')) {
-                populateM3USelect();
-            }
-        }, error => {
-            showMessage('Firestore Error', `Error fetching M3U sources: ${error.message}`);
-        });
-    }
-
-    // Populate the M3U select dropdown in the User Modal
-    function populateM3USelect() {
-        const select = document.getElementById('assignedM3Uid');
-        const currentSelectedId = select.value;
-        select.innerHTML = '<option value="">Select a Source</option>';
-        
-        window.availableM3USources.forEach(source => {
-            const option = document.createElement('option');
-            option.value = source.id;
-            // Show the type next to the name for clarity
-            option.textContent = `${source.name} (${source.type === 'url' ? 'URL' : 'File'})`;
-            select.appendChild(option);
-        });
-        
-        if (currentSelectedId) {
-            select.value = currentSelectedId;
-        }
-    }
-
-    // Handle M3U Source form submission
-    document.getElementById('m3u-form').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        showLoading();
-
-        const name = document.getElementById('sourceName').value.trim();
-        const url = document.getElementById('sourceUrl').value.trim();
-        const content = window.uploadedM3UContent;
-        
-        // Validation: Must have EITHER a URL OR file content
-        if (!url && !content) {
-            hideLoading();
-            showMessage('Missing Data', 'You must provide an M3U URL OR upload an M3U file.');
-            return;
-        }
-        
-        // Validation: Cannot have both
-        if (url && content) {
-            hideLoading();
-            showMessage('Conflicting Data', 'Please use either a URL or a File, not both.');
-            return;
-        }
-
-        // Determine data structure
-        let sourceData;
-        if (content) {
-            sourceData = { name, data: content, type: 'file', created_at: new Date().toISOString() };
-        } else {
-            // URL validation
-            if (!url.startsWith('http')) {
-                hideLoading();
-                showMessage('Invalid URL', 'The M3U URL must start with http:// or https://');
-                return;
-            }
-            sourceData = { name, data: url, type: 'url', created_at: new Date().toISOString() };
-        }
-
-        const sourcesPath = getCollectionPath('m3u_sources');
-        if (!sourcesPath) return hideLoading();
-        
-        try {
-            if (editingM3UId) {
-                // Edit existing source
-                const docRef = doc(window.db, sourcesPath, editingM3UId);
-                await updateDoc(docRef, sourceData);
-                showMessage('Success', 'M3U Source updated successfully!');
-            } else {
-                // Add new source
-                const colRef = collection(window.db, sourcesPath);
-                await addDoc(colRef, sourceData);
-                showMessage('Success', 'M3U Source added successfully!');
-            }
-            closeM3UModal();
-        } catch(error) {
-            showMessage('Error', `Error saving source: ${error.message}`);
-        } finally {
-            hideLoading();
-        }
-    });
-
-    // Delete M3U Source
-    window.deleteM3USource = async function(sourceId) {
-        // IMPORTANT: Use custom modal in production, not confirm()
-        if (!window.confirm('Are you sure you want to delete this M3U source?')) return; 
-
-        showLoading();
-        const sourcesPath = getCollectionPath('m3u_sources');
-        if (!sourcesPath) return hideLoading();
-
-        try {
-            const docRef = doc(window.db, sourcesPath, sourceId);
-            await deleteDoc(docRef);
-            showMessage('Success', 'M3U Source deleted successfully!');
-        } catch(error) {
-            showMessage('Error', `Error deleting source: ${error.message}`);
-        } finally {
-            hideLoading();
-        }
-    }
-
-    // User Management
-
-    // Fetch and populate users table using onSnapshot
-    function fetchUsers() {
-        if (!window.authReady || !window.userId) return;
-
-        const usersPath = getCollectionPath('users');
-        if (!usersPath) return;
-
-        const usersColRef = collection(window.db, usersPath);
-
-        onSnapshot(usersColRef, (snapshot) => {
-            const tableBody = document.getElementById('users-table-body');
-            tableBody.innerHTML = ''; 
-
-            if (snapshot.empty) {
-                tableBody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">No users added yet.</td></tr>';
-                return;
-            }
-
-            snapshot.forEach(doc => {
-                const user = { id: doc.id, ...doc.data() };
-                const m3uSource = window.availableM3USources.find(s => s.id === user.assignedM3Uid);
-                
-                // IMPORTANT: Construct the private playlist link here
-                // We must use the source data (URL or File Content) in the link generation.
-                // Since this app has no backend to process the File Content, 
-                // the "Get Link" button will show a custom placeholder URL or the data itself.
-                
-                let userLink = "http://playlist-api.com/error/unassigned";
-                let sourceDisplay = 'Unassigned';
-
-                if (m3uSource) {
-                    sourceDisplay = `${m3uSource.name} (${m3uSource.type === 'url' ? 'URL' : 'File'})`;
-                    
-                    if (m3uSource.type === 'url') {
-                        // Standard URL format for an API gateway
-                        userLink = `http://playlist-api.com/get/${user.username}/${user.password}?source=${encodeURIComponent(m3uSource.data)}`;
-                    } else {
-                        // Display the file content itself as the link, or a warning, 
-                        // as a client cannot consume the raw file content directly.
-                        userLink = `*** WARNING: This link contains raw M3U File Content. A backend API is required to serve this playlist. ***\n\n${m3uSource.data}`;
-                        sourceDisplay = `<span class="text-red-500">${sourceDisplay}</span>`;
-                    }
-                }
-                
-                const row = tableBody.insertRow();
-                row.innerHTML = `
-                    <td class="px-6 py-4 whitespace-nowrap font-medium text-gray-900">${user.username}</td>
-                    <td class="px-6 py-4 whitespace-nowrap">${user.password}</td>
-                    <td class="px-6 py-4 truncate-data max-w-xs">
-                        <span class="cursor-pointer text-blue-600 hover:text-blue-800">${sourceDisplay}</span>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap">${user.expirationDate}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <button onclick="openUserModal('${user.id}')" class="text-indigo-600 hover:text-indigo-900 mr-2">Edit</button>
-                        <button onclick="deleteUser('${user.id}')" class="text-red-600 hover:text-red-900 mr-2">Delete</button>
-                        <button onclick="showLinkModal('${encodeURIComponent(userLink)}', '${user.username}', '${m3uSource ? m3uSource.type : 'none'}')" class="text-green-600 hover:text-green-800">Get Link</button>
-                    </td>
-                `;
-            });
-        }, error => {
-            showMessage('Firestore Error', `Error fetching users: ${error.message}`);
-        });
-    }
-    
-    // Show the modal with the generated user link
-    window.showLinkModal = function(encodedLink, username, sourceType) {
-        const link = decodeURIComponent(encodedLink);
-        document.getElementById('link-modal-title').textContent = `${username}'s Playlist Link`;
-        document.getElementById('generated-link').value = link;
-
-        const warningDiv = document.getElementById('link-warning');
-        if (sourceType === 'file') {
-            warningDiv.classList.remove('hidden');
-            warningDiv.innerHTML = '<span class="font-bold text-red-600">Warning:</span> The M3U File Content cannot be used directly in an IPTV player. You need a separate backend server to process this content.';
-        } else {
-            warningDiv.classList.add('hidden');
-        }
-
-        document.getElementById('copy-link-btn').onclick = () => copyToClipboard(link);
-        
-        document.getElementById('link-modal').classList.remove('hidden');
-        document.getElementById('link-modal').classList.add('flex');
-    }
-
-    window.closeLinkModal = function() {
-        document.getElementById('link-modal').classList.add('hidden');
-        document.getElementById('link-modal').classList.remove('flex');
-    }
-
-
-    // Handle User form submission
-    document.getElementById('user-form').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        showLoading();
-
-        const username = document.getElementById('username').value.trim();
-        const password = document.getElementById('password').value;
-        const expirationDate = document.getElementById('expirationDate').value;
-        const assignedM3Uid = document.getElementById('assignedM3Uid').value;
-        
-        // Basic validation
-        if (!assignedM3Uid) {
-            hideLoading();
-            showMessage('Missing Source', 'Please select an M3U Source before saving.');
-            return;
-        }
-
-        const userData = { username, password, expirationDate, assignedM3Uid, created_at: new Date().toISOString() };
-        const usersPath = getCollectionPath('users');
-        if (!usersPath) return hideLoading();
-
-        try {
-            if (editingUserId) {
-                // Edit existing user
-                const docRef = doc(window.db, usersPath, editingUserId);
-                await updateDoc(docRef, userData);
-                showMessage('Success', 'User updated successfully!');
-            } else {
-                // Add new user
-                const colRef = collection(window.db, usersPath);
-                await addDoc(colRef, userData);
-                showMessage('Success', 'User added successfully!');
-            }
-            closeUserModal();
-        } catch(error) {
-            showMessage('Error', `Error saving user: ${error.message}`);
-        } finally {
-            hideLoading();
-        }
-    });
-
-    // Delete User
-    window.deleteUser = async function(userIdToDelete) {
-        // IMPORTANT: Use custom modal in production, not confirm()
-        if (!window.confirm('Are you sure you want to delete this user?')) return; 
-
-        showLoading();
-        const usersPath = getCollectionPath('users');
-        if (!usersPath) return hideLoading();
-
-        try {
-            const docRef = doc(window.db, usersPath, userIdToDelete);
-            await deleteDoc(docRef);
-            showMessage('Success', 'User deleted successfully!');
-        } catch(error) {
-            showMessage('Error', `Error deleting user: ${error.message}`);
-        } finally {
-            hideLoading();
-        }
-    }
-
-    // Dashboard Summary Fetching (Simplified)
-    function fetchDashboardSummary() {
-        if (!window.authReady || !window.userId) return;
-
-        const usersPath = getCollectionPath('users');
-        const sourcesPath = getCollectionPath('m3u_sources');
-        if (!usersPath || !sourcesPath) return;
-        
-        const usersColRef = collection(window.db, usersPath);
-        const sourcesColRef = collection(window.db, sourcesPath);
-
-        // Fetch Total Users count and Expiring Users
-        onSnapshot(usersColRef, (usersSnapshot) => {
-            document.getElementById('total-users').textContent = usersSnapshot.size;
-            
-            const today = new Date();
-            const oneWeekLater = new Date(today);
-            oneWeekLater.setDate(today.getDate() + 7);
-
-            let expiringCount = 0;
-            usersSnapshot.forEach(doc => {
-                const expirationDateStr = doc.data().expirationDate;
-                if (expirationDateStr) {
-                    const expirationDate = new Date(expirationDateStr);
-                    // Check if expiration is today or in the next 7 days
-                    if (expirationDate <= oneWeekLater) {
-                        expiringCount++;
-                    }
-                }
-            });
-            document.getElementById('expiring-users').textContent = expiringCount;
-        }, error => {
-            showMessage('Error', `Error fetching users for dashboard: ${error.message}`);
-        });
-            
-        // Fetch Online Sources count
-        onSnapshot(sourcesColRef, (sourcesSnapshot) => {
-            document.getElementById('online-sources').textContent = sourcesSnapshot.size;
-        }, error => {
-            showMessage('Error', `Error fetching sources for dashboard: ${error.message}`);
-        });
-    }
-
-    // --- Utility Functions ---
-
-    // Copy M3U Link to Clipboard
-    function copyToClipboard(text) {
-        // Use document.execCommand('copy') as navigator.clipboard may not work in iframes
-        const tempInput = document.createElement('textarea');
-        tempInput.value = text;
-        document.body.appendChild(tempInput);
-        tempInput.select();
-        document.execCommand('copy');
-        document.body.removeChild(tempInput);
-        
-        // Show a brief visual confirmation on the copy button
-        const copyBtn = document.getElementById('copy-link-btn');
-        const originalText = copyBtn.textContent;
-        copyBtn.textContent = 'Copied!';
-        setTimeout(() => {
-            copyBtn.textContent = originalText;
-        }, 1500);
-    }
-
-
-    // --- Event Listeners and Initial Load ---
-    
-    document.addEventListener('DOMContentLoaded', () => {
-        // Initial setup for buttons
-        document.getElementById('add-user-btn').addEventListener('click', () => openUserModal(null));
-        document.getElementById('add-m3u-btn').addEventListener('click', () => openM3UModal(null));
-        
-        // Start Firebase initialization and authentication
-        initializeFirebase();
-    });
-
-  </script>
-  <!-- END FIREBASE SETUP -->
 </head>
-<body class="bg-gray-50 min-h-screen">
-
-  <header class="bg-white shadow max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 rounded-b-xl">
-    <div class="flex items-center justify-between">
-      <h1 class="text-2xl font-extrabold text-blue-700">IPTV Admin Dashboard</h1>
-      <div class="text-sm text-gray-500 hidden sm:block">
-        <span id="auth-status">Initializing...</span>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>IPTV Panel — Local Website</h1>
+        <div class="small">Manage users, import M3U, assign channels, and generate per-user playlists</div>
       </div>
-    </div>
-  </header>
-
-  <div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-    <!-- Loading overlay (hidden by default) -->
-    <div id="loading-overlay" class="fixed inset-0 bg-white bg-opacity-70 flex items-center justify-center z-50 hidden">
-      <div class="flex flex-col items-center space-y-2 text-blue-600">
-        <svg class="animate-spin h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3.293 7.962l1.624-1.624zm8-2.628c0 .245-.028.48-.069.708l1.625 1.625C15.86 19.38 17 15.816 17 12h-4c0 1.258-.293 2.44-.813 3.515l1.625 1.625z"></path>
-        </svg>
-        <span>Loading Data...</span>
+      <div class="topbar">
+        <div class="badge" id="channelsCount">Channels: 0</div>
+        <div class="badge" id="usersCount">Users: 0</div>
+        <button class="btn btn-ghost" id="btnBackup">Backup</button>
+        <button class="btn btn-ghost" id="btnRestore">Restore</button>
+        <button class="btn btn-ghost" id="btnLogout">Logout</button>
       </div>
-    </div>
+    </header>
 
-    <!-- Main Content Area -->
-    <div class="px-4 py-6 sm:px-0">
-      <!-- Tab Navigation -->
-      <nav class="flex space-x-2 border-b border-gray-200 mb-6">
-        <button onclick="showTab('dashboard')" id="tab-dashboard" class="bg-blue-600 text-white font-medium rounded-t-lg transition-colors duration-150 py-2 px-4 hover:bg-blue-700 text-sm shadow-md">Dashboard</button>
-        <button onclick="showTab('user-management')" id="tab-user-management" class="bg-gray-200 text-gray-700 font-medium rounded-t-lg transition-colors duration-150 py-2 px-4 hover:bg-gray-300 text-sm">IPTV Users</button>
-        <button onclick="showTab('m3u-sources')" id="tab-m3u-sources" class="bg-gray-200 text-gray-700 font-medium rounded-t-lg transition-colors duration-150 py-2 px-4 hover:bg-gray-300 text-sm">M3U Sources</button>
-      </nav>
-
-      <!-- Dashboard Panel -->
-      <div id="dashboard" class="tab-content">
-        <h2 class="text-xl font-semibold mb-4 text-gray-800">Panel Overview</h2>
-        <div class="grid grid-cols-1 gap-5 sm:grid-cols-3">
-          <!-- Card 1 -->
-          <div class="bg-white overflow-hidden shadow-lg rounded-xl border border-blue-100">
-            <div class="p-5">
-              <div class="flex items-center">
-                <div class="flex-shrink-0 bg-blue-500 rounded-md p-3">
-                  <!-- User Icon -->
-                  <svg class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a5 5 0 013.91 1.706M12 4.354c-1.077 0-2.127.275-3.044.802M12 4.354V12m0 7.291c-1.077 0-2.127-.275-3.044-.802M12 19.291v-7.937m-3.044.802C6.98 12.35 6 12 6 12m0 0c0-1.056.242-2.056.711-2.946m-1.722 3.068a8.001 8.001 0 0013.882 0m-1.722-3.068C17.758 9.944 18 10.944 18 12m0 0c0 1.056-.242 2.056-.711 2.946M12 19.291c1.077 0 2.127-.275 3.044-.802"></path>
-                  </svg>
-                </div>
-                <div class="ml-5 w-0 flex-1">
-                  <dt class="text-sm font-medium text-gray-500 truncate">Total Active Users</dt>
-                  <dd class="mt-1 flex items-baseline">
-                    <div id="total-users" class="text-2xl font-bold text-gray-900">0</div>
-                  </dd>
-                </div>
-              </div>
+    <div class="grid cols-3">
+      <!-- left: users & import -->
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <strong>Users</strong>
+          <div class="small">Admin controls</div>
+        </div>
+        <div style="margin-top:10px" class="flex-col">
+          <div>
+            <label>New user</label>
+            <div class="row">
+              <input id="inpUsername" placeholder="username (e.g. user1)" type="text" />
+              <input id="inpPassword" placeholder="password" type="password" style="width:130px" />
+            </div>
+            <div style="margin-top:8px" class="row">
+              <button class="btn btn-primary" id="btnAddUser">Add</button>
+              <button class="btn btn-ghost" id="btnClearUser">Clear</button>
             </div>
           </div>
 
-          <!-- Card 2 -->
-          <div class="bg-white overflow-hidden shadow-lg rounded-xl border border-green-100">
-            <div class="p-5">
-              <div class="flex items-center">
-                <div class="flex-shrink-0 bg-green-500 rounded-md p-3">
-                  <!-- Globe Icon -->
-                  <svg class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5.7m1.947 9.354C9.172 20.358 10.5 21 12 21s2.828-.642 4.348-1.646M18.995 12H12M5.7 12a9 9 0 0113.89 0M21 12a9 9 0 01-18 0"></path>
-                  </svg>
-                </div>
-                <div class="ml-5 w-0 flex-1">
-                  <dt class="text-sm font-medium text-gray-500 truncate">M3U Sources Online</dt>
-                  <dd class="mt-1 flex items-baseline">
-                    <div id="online-sources" class="text-2xl font-bold text-gray-900">0</div>
-                  </dd>
-                </div>
-              </div>
-            </div>
+          <div style="margin-top:10px">
+            <label>Users list</label>
+            <div class="users-list" id="usersList"></div>
           </div>
+        </div>
 
-          <!-- Card 3 -->
-          <div class="bg-white overflow-hidden shadow-lg rounded-xl border border-yellow-100">
-            <div class="p-5">
-              <div class="flex items-center">
-                <div class="flex-shrink-0 bg-yellow-500 rounded-md p-3">
-                  <!-- Clock Icon -->
-                  <svg class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                  </svg>
-                </div>
-                <div class="ml-5 w-0 flex-1">
-                  <dt class="text-sm font-medium text-gray-500 truncate">Users Expiring Soon</dt>
-                  <dd class="mt-1 flex items-baseline">
-                    <div id="expiring-users" class="text-2xl font-bold text-gray-900">0</div>
-                  </dd>
-                </div>
-              </div>
-            </div>
+        <hr style="margin:12px 0;border:0;height:1px;background:#f1f3f7" />
+
+        <div>
+          <label>Import M3U (paste)</label>
+          <textarea id="m3uPaste" placeholder="#EXTM3U\n#EXTINF:-1,Channel name\nhttp://..."></textarea>
+          <div style="margin-top:8px" class="row">
+            <button class="btn btn-primary" id="btnImport">Import Pasted</button>
+            <label class="btn btn-ghost" style="cursor:pointer">
+              Choose File
+              <input type="file" id="m3uFile" accept=".m3u,.txt" />
+            </label>
+            <button class="btn btn-ghost" id="btnClearChannels">Clear Channels</button>
           </div>
         </div>
       </div>
 
-      <!-- User Management Panel -->
-      <div id="user-management" class="tab-content hidden">
-        <h2 class="text-xl font-semibold mb-4 text-gray-800">IPTV User Accounts</h2>
-        <button id="add-user-btn" class="mb-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg shadow transition duration-150">Add New User</button>
-        
-        <div class="bg-white shadow-lg rounded-xl overflow-x-auto">
-          <table class="min-w-full divide-y divide-gray-200">
-            <thead class="bg-gray-50">
-              <tr>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Username</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Password</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expiration</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody id="users-table-body" class="bg-white divide-y divide-gray-200">
-              <!-- User rows will be populated by JavaScript -->
-            </tbody>
-          </table>
+      <!-- center: channels -->
+      <div class="card center">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <strong>Channels</strong>
+          <div class="small">Search & assign</div>
         </div>
-      </div>
 
-      <!-- M3U Sources Panel -->
-      <div id="m3u-sources" class="tab-content hidden">
-        <h2 class="text-xl font-semibold mb-4 text-gray-800">M3U Sources</h2>
-        <button id="add-m3u-btn" class="mb-4 bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg shadow transition duration-150">Add New Source</button>
-        
-        <div class="bg-white shadow-lg rounded-xl overflow-x-auto">
-          <table class="min-w-full divide-y divide-gray-200">
-            <thead class="bg-gray-50">
-              <tr>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody id="sources-table-body" class="bg-white divide-y divide-gray-200">
-              <!-- Source rows will be populated by JavaScript -->
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal for Adding/Editing User (hidden by default) -->
-  <div id="user-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-4">
-    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
-      <h3 id="user-modal-title" class="text-lg font-semibold mb-4 border-b pb-2">Add New User</h3>
-      <form id="user-form">
-        <!-- Form fields for username, password, expiration, M3U source selection -->
-        <div class="mb-4">
-          <label for="username" class="block text-sm font-medium text-gray-700">Username</label>
-          <input type="text" id="username" required class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
-        </div>
-        <div class="mb-4">
-          <label for="password" class="block text-sm font-medium text-gray-700">Password</label>
-          <input type="password" id="password" required class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
-        </div>
-        <div class="mb-4">
-          <label for="expirationDate" class="block text-sm font-medium text-gray-700">Expiration Date</label>
-          <input type="date" id="expirationDate" required class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
-        </div>
-        <div class="mb-4">
-          <label for="assignedM3Uid" class="block text-sm font-medium text-gray-700">Assign M3U Source</label>
-          <select id="assignedM3Uid" required class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border bg-white">
-            <!-- Options populated by JavaScript -->
+        <div class="search" style="margin-top:8px">
+          <input id="search" placeholder="Search channels or groups..." type="text" />
+          <select id="filterGroup" style="width:160px">
+            <option value="">All groups</option>
           </select>
-          <p class="text-xs text-gray-500 mt-1">Make sure you have added M3U sources first.</p>
-        </div>
-        
-        <div class="mt-6 flex justify-end space-x-3">
-          <button type="button" onclick="closeUserModal()" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-lg transition duration-150">Cancel</button>
-          <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg shadow transition duration-150">Save User</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- Modal for Adding/Editing M3U Source (hidden by default) -->
-  <div id="m3u-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-4">
-    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
-      <h3 id="m3u-modal-title" class="text-lg font-semibold mb-4 border-b pb-2">Add New M3U Source</h3>
-      <form id="m3u-form">
-        <!-- Form fields for M3U source name, URL, or File -->
-        <div class="mb-4">
-          <label for="sourceName" class="block text-sm font-medium text-gray-700">Source Name</label>
-          <input type="text" id="sourceName" required class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 p-2 border">
+          <div style="margin-left:auto" class="small">Select a user to assign channels</div>
         </div>
 
-        <div class="mb-4">
-          <label for="sourceUrl" class="block text-sm font-medium text-gray-700">M3U URL (Optional)</label>
-          <input type="url" id="sourceUrl" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 p-2 border">
-          <p class="text-xs text-gray-500 mt-1">Provide a URL **OR** upload a file below. Not both.</p>
-        </div>
-
-        <div class="mb-4">
-          <label for="m3uFile" class="block text-sm font-medium text-gray-700">Upload M3U File (.m3u, Optional)</label>
-          <input type="file" id="m3uFile" accept=".m3u" onchange="handleM3UFileUpload(event)" class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100">
-          <p class="text-xs text-gray-500 mt-1">File must be under 500KB. Leave blank if using a URL.</p>
-        </div>
-        
-        <div class="mt-6 flex justify-end space-x-3">
-          <button type="button" onclick="closeM3UModal()" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-lg transition duration-150">Cancel</button>
-          <button type="submit" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg shadow transition duration-150">Save Source</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- Modal for Generated Link -->
-  <div id="link-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-4">
-    <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6">
-      <h3 id="link-modal-title" class="text-lg font-semibold mb-4 border-b pb-2">User Playlist Link</h3>
-      <div id="link-warning" class="hidden bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-4" role="alert"></div>
-      <div class="mb-4">
-        <label for="generated-link" class="block text-sm font-medium text-gray-700">Copy this URL (or content) for the user:</label>
-        <textarea id="generated-link" rows="5" readonly class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border bg-gray-50 text-sm overflow-x-auto resize-none"></textarea>
+        <div class="channels-list" id="channelsList"></div>
       </div>
-      <div class="mt-6 flex justify-end space-x-3">
-        <button type="button" onclick="closeLinkModal()" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-lg transition duration-150">Close</button>
-        <button type="button" id="copy-link-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg shadow transition duration-150">Copy Link</button>
+
+      <!-- right: selected user preview & add channel -->
+      <div class="card right-panel">
+        <div>
+          <strong>Selected user</strong>
+          <div class="small" id="selectedPreview">No user selected</div>
+        </div>
+
+        <div>
+          <label>Selected actions</label>
+          <div class="row">
+            <button class="btn btn-primary" id="btnDownloadUser">Download M3U</button>
+            <button class="btn btn-ghost" id="btnToggleAll">Toggle All Visible</button>
+            <button class="btn btn-danger" id="btnDeleteUser">Delete User</button>
+          </div>
+        </div>
+
+        <hr />
+
+        <div>
+          <label>Add single channel</label>
+          <input id="chTitle" placeholder="Channel title" type="text" />
+          <input id="chUrl" placeholder="Stream URL (http... or udp://)" type="text" style="margin-top:8px" />
+          <input id="chGroup" placeholder="Group (optional)" type="text" style="margin-top:8px" />
+          <div style="margin-top:8px" class="row">
+            <button class="btn btn-primary" id="btnAddChannel">Add Channel</button>
+            <button class="btn btn-ghost" id="btnClearAdd">Clear</button>
+          </div>
+        </div>
+
+        <div style="margin-top:auto">
+          <label>Settings</label>
+          <div class="small">Change admin password (demo only, stored in localStorage)</div>
+          <input id="adminPass" placeholder="New admin pass" type="password" style="margin-top:8px" />
+          <div style="margin-top:8px" class="row">
+            <button class="btn btn-primary" id="btnSetAdmin">Set Password</button>
+            <button class="btn btn-ghost" id="btnResetData">Reset Data</button>
+          </div>
+        </div>
       </div>
     </div>
-  </div>
 
-  <!-- Message/Error Modal (for alerts) -->
-  <div id="message-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-4">
-    <div class="bg-white rounded-xl shadow-2xl w-full max-w-xs p-6 text-center">
-        <h3 id="message-modal-title" class="text-xl font-bold mb-3">Error</h3>
-        <p id="message-modal-text" class="text-gray-700 mb-6">Something went wrong.</p>
-        <button onclick="closeMessageModal()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-150 w-full">Close</button>
+    <div class="footer card">
+      <div>Local demo panel. For production: implement backend, hashed passwords, and tokenized stream URLs.</div>
+      <div style="margin-top:6px" class="small">Created for quick local use.</div>
     </div>
   </div>
 
+  <!-- Login overlay -->
+  <div id="loginOverlay" class="login-overlay" style="display:none">
+    <div class="login-box card">
+      <h3 style="margin-top:0">Admin Login</h3>
+      <div class="small">Enter admin password to open the panel</div>
+      <div style="margin-top:12px">
+        <input id="loginPass" placeholder="admin password" type="password" />
+      </div>
+      <div style="margin-top:12px" class="row">
+        <button class="btn btn-primary" id="btnLogin">Login</button>
+        <button class="btn btn-ghost" id="btnDemo">Open Demo (no lock)</button>
+      </div>
+      <div style="margin-top:12px" class="small">Default admin password: <strong>admin123</strong></div>
+    </div>
+  </div>
+
+<script>
+/* ===========================
+   Simple IPTV Panel (client)
+   Stored in localStorage:
+     - iptv_users: [{id,username,password,active,allowedChannels:[] ,createdAt}]
+     - iptv_channels: [{id,title,url,group,tvgId}]
+     - iptv_admin_pass: '...'
+   =========================== */
+
+(function(){
+  // Utilities
+  const $ = id => document.getElementById(id);
+  const randId = () => Math.random().toString(36).slice(2,9);
+
+  // State
+  let users = JSON.parse(localStorage.getItem('iptv_users') || '[]');
+  let channels = JSON.parse(localStorage.getItem('iptv_channels') || '[]');
+  let adminPass = localStorage.getItem('iptv_admin_pass') || 'admin123';
+  let selectedUserId = null;
+  let lastSearch = '';
+
+  // Elements
+  const usersList = $('usersList');
+  const channelsList = $('channelsList');
+  const channelsCount = $('channelsCount');
+  const usersCount = $('usersCount');
+  const m3uPaste = $('m3uPaste');
+  const m3uFile = $('m3uFile');
+  const searchInput = $('search');
+  const filterGroup = $('filterGroup');
+  const selectedPreview = $('selectedPreview');
+
+  // Save helpers
+  function saveAll(){
+    localStorage.setItem('iptv_users', JSON.stringify(users));
+    localStorage.setItem('iptv_channels', JSON.stringify(channels));
+    localStorage.setItem('iptv_admin_pass', adminPass);
+    renderCounts();
+  }
+
+  function renderCounts(){
+    channelsCount.textContent = 'Channels: ' + channels.length;
+    usersCount.textContent = 'Users: ' + users.length;
+  }
+
+  // Login logic
+  const loginOverlay = $('loginOverlay');
+  function showLogin(){ loginOverlay.style.display='flex'; }
+  function hideLogin(){ loginOverlay.style.display='none'; }
+
+  // Init login on first load
+  function ensureAdminPass(){
+    if(!localStorage.getItem('iptv_admin_pass')) {
+      adminPass = 'admin123';
+      localStorage.setItem('iptv_admin_pass', adminPass);
+    } else {
+      adminPass = localStorage.getItem('iptv_admin_pass');
+    }
+  }
+  ensureAdminPass();
+  // Show login if not 'demo opened'
+  if(!localStorage.getItem('iptv_demo_open')){
+    showLogin();
+  } else {
+    hideLogin();
+  }
+
+  // UI Render functions
+  function renderUsers(){
+    usersList.innerHTML='';
+    if(users.length===0){ usersList.innerHTML='<div class="small muted">No users yet</div>'; return; }
+    users.forEach(u => {
+      const div = document.createElement('div');
+      div.className = 'user-item';
+      div.innerHTML = `
+        <div style="min-width:0">
+          <div style="font-weight:600">${escapeHtml(u.username)}</div>
+          <div class="small">${u.active ? 'Active' : 'Disabled'} • ${new Date(u.createdAt).toLocaleString()}</div>
+          <div class="small">Allowed: ${ (u.allowedChannels||[]).length }</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-ghost btn-select" data-id="${u.id}">${selectedUserId===u.id ? 'Selected' : 'Select'}</button>
+            <button class="btn btn-ghost btn-download" data-id="${u.id}">Download</button>
+            <button class="btn btn-danger btn-delete" data-id="${u.id}">Delete</button>
+          </div>
+          <div class="small">pwd: ${escapeHtml(u.password || '')}</div>
+        </div>
+      `;
+      usersList.appendChild(div);
+    });
+    // attach events
+    usersList.querySelectorAll('.btn-select').forEach(b => b.onclick = (e) => {
+      const id = e.currentTarget.dataset.id;
+      selectedUserId = (selectedUserId === id) ? null : id;
+      renderUsers(); renderChannels();
+      renderSelectedPreview();
+    });
+    usersList.querySelectorAll('.btn-download').forEach(b => b.onclick = (e) => {
+      const id = e.currentTarget.dataset.id;
+      downloadUserM3U(id);
+    });
+    usersList.querySelectorAll('.btn-delete').forEach(b => b.onclick = (e) => {
+      const id = e.currentTarget.dataset.id;
+      if(!confirm('Delete user?')) return;
+      users = users.filter(x => x.id !== id);
+      if(selectedUserId === id) selectedUserId = null;
+      saveAll(); renderUsers(); renderChannels(); renderSelectedPreview();
+    });
+  }
+
+  function renderChannels(){
+    // build group list
+    const groups = Array.from(new Set(channels.map(c => c.group || '').filter(Boolean))).sort();
+    filterGroup.innerHTML = '<option value="">All groups</option>' + groups.map(g => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join('');
+    const q = searchInput.value.trim().toLowerCase();
+    lastSearch = q;
+    channelsList.innerHTML = '';
+    const visible = channels.filter(c=>{
+      if(filterGroup.value && (c.group||'').toLowerCase() !== filterGroup.value.toLowerCase()) return false;
+      if(!q) return true;
+      return (c.title||'').toLowerCase().includes(q) || (c.group||'').toLowerCase().includes(q) || (c.url||'').toLowerCase().includes(q);
+    });
+    if(visible.length===0){ channelsList.innerHTML = '<div style="padding:16px" class="small muted">No channels</div>'; return; }
+    visible.forEach((c,i)=>{
+      const row = document.createElement('div');
+      row.className = 'channel-row';
+      const allowed = selectedUserId ? (users.find(u=>u.id===selectedUserId)?.allowedChannels||[]).includes(c.id) : false;
+      row.innerHTML = `
+        <div style="width:32px;font-size:13px;color:var(--muted)">${i+1}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600">${escapeHtml(c.title)}</div>
+          <div class="small" style="margin-top:4px">${escapeHtml(c.group || '')} • ${escapeHtml(c.tvgId || '')}</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-ghost btn-copy" data-id="${c.id}">Copy URL</button>
+          <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" class="chk-allow" data-id="${c.id}" ${allowed ? 'checked' : ''}/> Allowed</label>
+        </div>
+      `;
+      channelsList.appendChild(row);
+    });
+
+    // attach events
+    channelsList.querySelectorAll('.btn-copy').forEach(b=> b.onclick = (e) => {
+      const id = e.currentTarget.dataset.id;
+      const ch = channels.find(x=>x.id===id);
+      if(!ch) return alert('Not found');
+      navigator.clipboard.writeText(ch.url).then(()=> alert('URL copied'));
+    });
+    channelsList.querySelectorAll('.chk-allow').forEach(chk => chk.onchange = (e) => {
+      const id = e.target.dataset.id;
+      if(!selectedUserId) { e.target.checked = false; return alert('Select a user first'); }
+      const user = users.find(u=>u.id===selectedUserId);
+      if(!user) return;
+      user.allowedChannels = user.allowedChannels || [];
+      if(e.target.checked){
+        if(!user.allowedChannels.includes(id)) user.allowedChannels.push(id);
+      } else {
+        user.allowedChannels = user.allowedChannels.filter(x=>x!==id);
+      }
+      saveAll(); renderUsers(); renderSelectedPreview();
+    });
+  }
+
+  function renderSelectedPreview(){
+    if(!selectedUserId){ selectedPreview.textContent = 'No user selected'; return; }
+    const u = users.find(x=>x.id===selectedUserId);
+    if(!u){ selectedPreview.textContent = 'User not found'; return; }
+    selectedPreview.innerHTML = `
+      <div style="font-weight:600">${escapeHtml(u.username)}</div>
+      <div class="small">Status: ${u.active ? 'Active' : 'Disabled'}</div>
+      <div class="small">Allowed channels: ${(u.allowedChannels||[]).length}</div>
+    `;
+  }
+
+  // Parse M3U basic
+  function parseM3U(text){
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const out = [];
+    let lastMeta = null;
+    for(const line of lines){
+      if(line.startsWith('#EXTINF')){ lastMeta = line; continue; }
+      if(line.startsWith('#')){ continue; }
+      // assume URL line
+      const url = line;
+      let title = url;
+      let group = '';
+      let tvgId = '';
+      if(lastMeta){
+        const comma = lastMeta.indexOf(',');
+        if(comma !== -1) title = lastMeta.slice(comma+1).trim();
+        const gm = lastMeta.match(/group-title\s*=\s*"([^"]+)"/i);
+        const tv = lastMeta.match(/tvg-id\s*=\s*"([^"]+)"/i);
+        if(gm) group = gm[1];
+        if(tv) tvgId = tv[1];
+      }
+      out.push({ id: randId(), title: title || url, url, group, tvgId});
+      lastMeta = null;
+    }
+    return out;
+  }
+
+  // Import functions
+  $('btnImport').onclick = () => {
+    const text = m3uPaste.value.trim();
+    if(!text) return alert('Paste M3U text first');
+    const parsed = parseM3U(text);
+    mergeChannels(parsed);
+    m3uPaste.value = '';
+    alert('Imported ' + parsed.length + ' channels (duplicates skipped by URL)');
+  };
+  m3uFile.onchange = (e) => {
+    const f = e.target.files && e.target.files[0];
+    if(!f) return;
+    const r = new FileReader();
+    r.onload = function(ev){
+      const text = ev.target.result;
+      const parsed = parseM3U(text);
+      mergeChannels(parsed);
+      alert('Imported ' + parsed.length + ' channels from file (duplicates skipped by URL)');
+    };
+    r.readAsText(f);
+    e.target.value = '';
+  };
+
+  function mergeChannels(parsed){
+    const existingUrls = new Set(channels.map(c=>c.url));
+    const toAdd = parsed.filter(p => !existingUrls.has(p.url));
+    channels = [...toAdd, ...channels];
+    saveAll(); renderChannels(); renderCounts();
+  }
+
+  // Add single channel
+  $('btnAddChannel').onclick = () => {
+    const title = $('chTitle').value.trim();
+    const url = $('chUrl').value.trim();
+    const group = $('chGroup').value.trim();
+    if(!title || !url) return alert('Title and URL required');
+    channels.unshift({ id: randId(), title, url, group, tvgId: '' });
+    $('chTitle').value=''; $('chUrl').value=''; $('chGroup').value='';
+    saveAll(); renderChannels(); renderCounts();
+  };
+
+  // Users
+  $('btnAddUser').onclick = () => {
+    const username = $('inpUsername').value.trim();
+    const password = $('inpPassword').value.trim();
+    if(!username || !password) return alert('username and password required');
+    if(users.some(u => u.username === username)) return alert('User exists');
+    const u = { id: randId(), username, password, active:true, allowedChannels: channels.map(c=>c.id), createdAt: Date.now() };
+    users.unshift(u);
+    $('inpUsername').value=''; $('inpPassword').value='';
+    saveAll(); renderUsers(); renderSelectedPreview();
+  };
+  $('btnClearUser').onclick = () => { $('inpUsername').value=''; $('inpPassword').value=''; };
+
+  // Download user M3U
+  function generateUserM3UText(userId){
+    const user = users.find(u => u.id === userId);
+    if(!user) return '';
+    const allowed = new Set(user.allowedChannels || []);
+    const lines = ['#EXTM3U'];
+    for(const ch of channels){
+      if(allowed.has(ch.id)){
+        const metaParts = [];
+        if(ch.tvgId) metaParts.push(`tvg-id="${ch.tvgId}"`);
+        if(ch.group) metaParts.push(`group-title="${ch.group}"`);
+        const meta = `#EXTINF:-1 ${metaParts.join(' ')} ,${ch.title}`;
+        lines.push(meta); lines.push(ch.url);
+      }
+    }
+    return lines.join('\n');
+  }
+  function downloadUserM3U(userId){
+    const text = generateUserM3UText(userId);
+    if(!text) return alert('No playlist for this user');
+    const blob = new Blob([text], { type: 'application/x-mpegURL' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const user = users.find(u=>u.id===userId);
+    a.download = (user ? user.username : 'user') + '-playlist.m3u';
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  }
+  $('btnDownloadUser').onclick = () => {
+    if(!selectedUserId) return alert('Select a user first');
+    downloadUserM3U(selectedUserId);
+  };
+
+  // Toggle all visible channels allowed/unallowed for selected user
+  $('btnToggleAll').onclick = () => {
+    if(!selectedUserId) return alert('Select a user first');
+    const visible = channels.filter(c=>{
+      if(filterGroup.value && (c.group||'').toLowerCase() !== filterGroup.value.toLowerCase()) return false;
+      if(!lastSearch) return true;
+      return (c.title||'').toLowerCase().includes(lastSearch) || (c.group||'').toLowerCase().includes(lastSearch);
+    });
+    const user = users.find(u=>u.id===selectedUserId);
+    if(!user) return;
+    user.allowedChannels = user.allowedChannels || [];
+    // if any visible channel is not allowed, we'll set them all allowed; otherwise remove them
+    const anyNotAllowed = visible.some(c => !user.allowedChannels.includes(c.id));
+    if(anyNotAllowed){
+      // add all visible
+      visible.forEach(c => { if(!user.allowedChannels.includes(c.id)) user.allowedChannels.push(c.id); });
+    } else {
+      // remove all visible
+      user.allowedChannels = user.allowedChannels.filter(id => !visible.some(c => c.id === id));
+    }
+    saveAll(); renderChannels(); renderUsers(); renderSelectedPreview();
+  };
+
+  // Delete selected user
+  $('btnDeleteUser').onclick = () => {
+    if(!selectedUserId) return alert('Select a user first');
+    if(!confirm('Delete selected user?')) return;
+    users = users.filter(u=>u.id!==selectedUserId);
+    selectedUserId = null;
+    saveAll(); renderUsers(); renderChannels(); renderSelectedPreview();
+  };
+
+  // Backup / Restore
+  $('btnBackup').onclick = () => {
+    const data = { users, channels };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'iptv-backup.json'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  };
+  $('btnRestore').onclick = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.onchange = (e) => {
+      const f = e.target.files && e.target.files[0];
+      if(!f) return;
+      const r = new FileReader();
+      r.onload = (ev) => {
+        try{
+          const data = JSON.parse(ev.target.result);
+          if(Array.isArray(data.users) && Array.isArray(data.channels)){
+            users = data.users; channels = data.channels;
+            saveAll(); renderUsers(); renderChannels(); renderSelectedPreview();
+            alert('Restore complete');
+          } else alert('Invalid backup file');
+        } catch(err){ alert('Failed to parse file'); }
+      };
+      r.readAsText(f);
+    };
+    input.click();
+  };
+
+  // Search & filter
+  searchInput.oninput = () => { renderChannels(); };
+  filterGroup.onchange = () => { renderChannels(); };
+
+  // Clear channels
+  $('btnClearChannels').onclick = () => {
+    if(!confirm('Clear all channels?')) return;
+    channels = []; saveAll(); renderChannels();
+  };
+
+  // Admin settings
+  $('btnSetAdmin').onclick = () => {
+    const p = $('adminPass').value.trim();
+    if(!p) return alert('Enter new admin password');
+    adminPass = p;
+    localStorage.setItem('iptv_admin_pass', adminPass);
+    $('adminPass').value='';
+    alert('Admin password changed');
+  };
+  $('btnResetData').onclick = () => {
+    if(!confirm('Reset ALL data (users, channels, admin pass)?')) return;
+    users = []; channels = []; adminPass = 'admin123';
+    localStorage.removeItem('iptv_users'); localStorage.removeItem('iptv_channels'); localStorage.setItem('iptv_admin_pass', adminPass);
+    renderUsers(); renderChannels(); renderSelectedPreview(); renderCounts();
+    alert('Data reset to empty. Default admin password is admin123');
+  };
+
+  // Login handlers
+  $('btnLogin').onclick = () => {
+    const p = $('loginPass').value;
+    if(p === adminPass){
+      localStorage.setItem('iptv_demo_open', '1');
+      hideLogin();
+      $('loginPass').value='';
+      renderUsers(); renderChannels();
+    } else alert('Wrong password');
+  };
+  $('btnDemo').onclick = () => {
+    // open demo mode without password
+    localStorage.setItem('iptv_demo_open', '1');
+    hideLogin();
+    renderUsers(); renderChannels();
+  };
+
+  // Logout
+  $('btnLogout').onclick = () => {
+    localStorage.removeItem('iptv_demo_open');
+    showLogin();
+  };
+
+  // Reset add form
+  $('btnClearAdd').onclick = () => { $('chTitle').value=''; $('chUrl').value=''; $('chGroup').value=''; };
+
+  // Simple HTML escape
+  function escapeHtml(s){
+    if(!s && s!==0) return '';
+    return String(s).replace(/[&<>"']/g, (m)=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+
+  // Misc: copy initial demo data if none exist (optional)
+  function ensureDemoData(){
+    if(localStorage.getItem('iptv_seeded')) return;
+    if(channels.length===0 && users.length===0){
+      // small sample
+      channels = [
+        { id: randId(), title:'Demo News', url:'http://example.com/stream1', group:'News', tvgId:'' },
+        { id: randId(), title:'Demo Movie', url:'http://example.com/stream2', group:'Movies', tvgId:'' },
+        { id: randId(), title:'Demo Sports', url:'http://example.com/stream3', group:'Sports', tvgId:'' },
+      ];
+      users = [
+        { id: randId(), username:'user1', password:'pass1', active:true, allowedChannels: channels.map(c=>c.id), createdAt: Date.now() }
+      ];
+      localStorage.setItem('iptv_seeded','1');
+      saveAll();
+    }
+  }
+
+  // Simple utils for file drop? omitted to keep compact
+
+  // Attach misc UI buttons
+  $('btnResetData').title = 'Delete all stored data and reset to defaults';
+
+  // initial render
+  ensureDemoData();
+  renderCounts();
+  renderUsers();
+  renderChannels();
+  renderSelectedPreview();
+
+  // download per-user from user list buttons (event binding already applied during renderUsers)
+  // Also allow downloading by clicking user download in list - already implemented
+
+  // Make sure resize behavior ok for small screens (nothing else)
+})();
+</script>
 </body>
 </html>
-
