@@ -10,8 +10,8 @@
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
     body { font-family: 'Inter', sans-serif; }
-    /* Fix for long URL truncation */
-    .truncate-url {
+    /* Fix for long data truncation */
+    .truncate-data {
         max-width: 300px; /* Adjust as needed */
         overflow: hidden;
         text-overflow: ellipsis;
@@ -23,32 +23,31 @@
   <script type="module">
     // Import required functions from modular SDKs
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
-    import { getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, addDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, getDocs, setLogLevel } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
     import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
     
     // Global Firebase instances and variables
     let app, db, auth;
-    window.db = null; // Expose globally for simplicity, but only after init
+    window.db = null; 
     window.auth = null;
     window.userId = null;
     window.authReady = false;
     window.availableM3USources = [];
+    window.uploadedM3UContent = null; // New global variable for file content
 
     // Global variables for Canvas environment
     const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
     const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-    const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
+    
     // Firebase Initialization Function
     function initializeFirebase() {
         if (Object.keys(firebaseConfig).length === 0) {
-             // Fallback for local development if running outside Canvas
              console.error("Firebase Config missing. Using dummy local config.");
              // Placeholder configuration if running outside the Canvas environment
              const dummyConfig = {
                   apiKey: "dummy-key",
                   authDomain: "dummy-domain.firebaseapp.com",
-                  projectId: "iptv-bd853", // Must match your project ID for rules
+                  projectId: "iptv-bd853", 
                   storageBucket: "dummy-bucket.appspot.com",
                   messagingSenderId: "123456789012",
                   appId: "1:123456789012:web:1234567890abcdef",
@@ -68,7 +67,7 @@
         // Log to debug Firestore rules issues
         setLogLevel('debug'); 
 
-        // 1. Authenticate the user (using anonymous sign-in or custom token if available)
+        // 1. Authenticate the user (using anonymous sign-in)
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 window.userId = user.uid;
@@ -210,6 +209,8 @@
       const title = document.getElementById('m3u-modal-title');
       
       form.reset();
+      window.uploadedM3UContent = null; // Reset global content variable
+      document.getElementById('m3uFile').value = ''; // Clear file input
 
       if (m3uIdToEdit) {
         title.textContent = 'Edit M3U Source';
@@ -221,7 +222,8 @@
             if (docSnap.exists()) {
                 const data = docSnap.data();
                 document.getElementById('sourceName').value = data.name || '';
-                document.getElementById('sourceUrl').value = data.url || '';
+                // Only populate the URL field if the type is 'url'
+                document.getElementById('sourceUrl').value = data.type === 'url' ? data.data : '';
             }
         } catch(error) {
             hideLoading();
@@ -238,8 +240,42 @@
     window.closeM3UModal = function() {
       document.getElementById('m3u-modal').classList.add('hidden');
       document.getElementById('m3u-modal').classList.remove('flex');
+      window.uploadedM3UContent = null; // Clear global content on close
     }
     
+    // --- File Handling Logic ---
+
+    window.handleM3UFileUpload = function(event) {
+        const file = event.target.files[0];
+        if (file) {
+            if (file.size > 500000) { // Limit file size to 500KB to stay well under 1MB Firestore limit
+                showMessage('File Too Large', 'File size exceeds 500KB limit. Please use a smaller file or a URL.');
+                event.target.value = null; // Clear the file input
+                window.uploadedM3UContent = null;
+                return;
+            }
+
+            showLoading();
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                window.uploadedM3UContent = e.target.result;
+                // Clear the URL field if a file is uploaded
+                document.getElementById('sourceUrl').value = ''; 
+                hideLoading();
+                showMessage('File Ready', `Successfully read ${file.name}. Click 'Save Source' to store it.`);
+            };
+            reader.onerror = function(e) {
+                hideLoading();
+                window.uploadedM3UContent = null;
+                showMessage('File Error', 'Could not read file.');
+            };
+            reader.readAsText(file);
+        } else {
+            window.uploadedM3UContent = null;
+        }
+    }
+
+
     // --- Firestore Data Operations (Modular SDK) ---
 
     // M3U Sources Management
@@ -267,12 +303,18 @@
                 const source = { id: doc.id, ...doc.data() };
                 window.availableM3USources.push(source); 
                 
+                // Determine what to display in the URL column
+                const displayData = source.type === 'url' 
+                    ? source.data 
+                    : `[File Content: ${source.data.substring(0, 100)}...]`; 
+                const dataType = source.type === 'url' ? 'URL' : 'File';
+
                 const row = tableBody.insertRow();
                 row.innerHTML = `
                     <td class="px-6 py-4 whitespace-nowrap">${source.name}</td>
-                    <td class="px-6 py-4 truncate-url max-w-xs" title="${source.url}">${source.url}</td>
+                    <td class="px-6 py-4 truncate-data max-w-xs" title="${displayData}">${displayData}</td>
                     <td class="px-6 py-4 whitespace-nowrap">
-                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Online</span>
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">${dataType}</span>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <button onclick="openM3UModal('${source.id}')" class="text-indigo-600 hover:text-indigo-900 mr-2">Edit</button>
@@ -298,7 +340,8 @@
         window.availableM3USources.forEach(source => {
             const option = document.createElement('option');
             option.value = source.id;
-            option.textContent = source.name;
+            // Show the type next to the name for clarity
+            option.textContent = `${source.name} (${source.type === 'url' ? 'URL' : 'File'})`;
             select.appendChild(option);
         });
         
@@ -314,15 +357,36 @@
 
         const name = document.getElementById('sourceName').value.trim();
         const url = document.getElementById('sourceUrl').value.trim();
+        const content = window.uploadedM3UContent;
         
-        // Basic URL validation
-        if (!url.startsWith('http')) {
+        // Validation: Must have EITHER a URL OR file content
+        if (!url && !content) {
             hideLoading();
-            showMessage('Invalid URL', 'The M3U URL must start with http:// or https://');
+            showMessage('Missing Data', 'You must provide an M3U URL OR upload an M3U file.');
+            return;
+        }
+        
+        // Validation: Cannot have both
+        if (url && content) {
+            hideLoading();
+            showMessage('Conflicting Data', 'Please use either a URL or a File, not both.');
             return;
         }
 
-        const sourceData = { name, url, created_at: new Date().toISOString() };
+        // Determine data structure
+        let sourceData;
+        if (content) {
+            sourceData = { name, data: content, type: 'file', created_at: new Date().toISOString() };
+        } else {
+            // URL validation
+            if (!url.startsWith('http')) {
+                hideLoading();
+                showMessage('Invalid URL', 'The M3U URL must start with http:// or https://');
+                return;
+            }
+            sourceData = { name, data: url, type: 'url', created_at: new Date().toISOString() };
+        }
+
         const sourcesPath = getCollectionPath('m3u_sources');
         if (!sourcesPath) return hideLoading();
         
@@ -348,7 +412,7 @@
 
     // Delete M3U Source
     window.deleteM3USource = async function(sourceId) {
-        // IMPORTANT: Replace confirm() with a custom modal for production
+        // IMPORTANT: Use custom modal in production, not confirm()
         if (!window.confirm('Are you sure you want to delete this M3U source?')) return; 
 
         showLoading();
@@ -391,27 +455,39 @@
                 const m3uSource = window.availableM3USources.find(s => s.id === user.assignedM3Uid);
                 
                 // IMPORTANT: Construct the private playlist link here
-                // Assumes the IPTV server is set up to handle requests like:
-                // [BaseURL]/playlist.m3u?username=[username]&password=[password]&source=[source_url]
-                const baseURL = "https://your-server-api.com"; // REPLACE THIS WITH YOUR ACTUAL API GATEWAY URL
-                const sourceUrl = m3uSource ? m3uSource.url : '';
+                // We must use the source data (URL or File Content) in the link generation.
+                // Since this app has no backend to process the File Content, 
+                // the "Get Link" button will show a custom placeholder URL or the data itself.
                 
-                // For demonstration, we'll create a simple placeholder URL structure
-                // You will need to customize this based on how your backend generates the playlist
-                const userLink = `http://playlist-api.com/get/${user.username}/${user.password}?source=${encodeURIComponent(sourceUrl)}`;
+                let userLink = "http://playlist-api.com/error/unassigned";
+                let sourceDisplay = 'Unassigned';
+
+                if (m3uSource) {
+                    sourceDisplay = `${m3uSource.name} (${m3uSource.type === 'url' ? 'URL' : 'File'})`;
+                    
+                    if (m3uSource.type === 'url') {
+                        // Standard URL format for an API gateway
+                        userLink = `http://playlist-api.com/get/${user.username}/${user.password}?source=${encodeURIComponent(m3uSource.data)}`;
+                    } else {
+                        // Display the file content itself as the link, or a warning, 
+                        // as a client cannot consume the raw file content directly.
+                        userLink = `*** WARNING: This link contains raw M3U File Content. A backend API is required to serve this playlist. ***\n\n${m3uSource.data}`;
+                        sourceDisplay = `<span class="text-red-500">${sourceDisplay}</span>`;
+                    }
+                }
                 
                 const row = tableBody.insertRow();
                 row.innerHTML = `
                     <td class="px-6 py-4 whitespace-nowrap font-medium text-gray-900">${user.username}</td>
                     <td class="px-6 py-4 whitespace-nowrap">${user.password}</td>
-                    <td class="px-6 py-4 truncate-url max-w-xs">
-                        <span title="${userLink}" class="cursor-pointer text-blue-600 hover:text-blue-800">${m3uSource ? m3uSource.name : 'Unassigned'}</span>
+                    <td class="px-6 py-4 truncate-data max-w-xs">
+                        <span class="cursor-pointer text-blue-600 hover:text-blue-800">${sourceDisplay}</span>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap">${user.expirationDate}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <button onclick="openUserModal('${user.id}')" class="text-indigo-600 hover:text-indigo-900 mr-2">Edit</button>
                         <button onclick="deleteUser('${user.id}')" class="text-red-600 hover:text-red-900 mr-2">Delete</button>
-                        <button onclick="showLinkModal('${userLink}', '${user.username}')" class="text-green-600 hover:text-green-800">Get Link</button>
+                        <button onclick="showLinkModal('${encodeURIComponent(userLink)}', '${user.username}', '${m3uSource ? m3uSource.type : 'none'}')" class="text-green-600 hover:text-green-800">Get Link</button>
                     </td>
                 `;
             });
@@ -421,9 +497,19 @@
     }
     
     // Show the modal with the generated user link
-    window.showLinkModal = function(link, username) {
+    window.showLinkModal = function(encodedLink, username, sourceType) {
+        const link = decodeURIComponent(encodedLink);
         document.getElementById('link-modal-title').textContent = `${username}'s Playlist Link`;
         document.getElementById('generated-link').value = link;
+
+        const warningDiv = document.getElementById('link-warning');
+        if (sourceType === 'file') {
+            warningDiv.classList.remove('hidden');
+            warningDiv.innerHTML = '<span class="font-bold text-red-600">Warning:</span> The M3U File Content cannot be used directly in an IPTV player. You need a separate backend server to process this content.';
+        } else {
+            warningDiv.classList.add('hidden');
+        }
+
         document.getElementById('copy-link-btn').onclick = () => copyToClipboard(link);
         
         document.getElementById('link-modal').classList.remove('hidden');
@@ -479,7 +565,7 @@
 
     // Delete User
     window.deleteUser = async function(userIdToDelete) {
-        // IMPORTANT: Replace confirm() with a custom modal for production
+        // IMPORTANT: Use custom modal in production, not confirm()
         if (!window.confirm('Are you sure you want to delete this user?')) return; 
 
         showLoading();
@@ -707,8 +793,8 @@
             <thead class="bg-gray-50">
               <tr>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">URL</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
@@ -760,14 +846,22 @@
     <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
       <h3 id="m3u-modal-title" class="text-lg font-semibold mb-4 border-b pb-2">Add New M3U Source</h3>
       <form id="m3u-form">
-        <!-- Form fields for M3U source name and URL -->
+        <!-- Form fields for M3U source name, URL, or File -->
         <div class="mb-4">
           <label for="sourceName" class="block text-sm font-medium text-gray-700">Source Name</label>
           <input type="text" id="sourceName" required class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 p-2 border">
         </div>
+
         <div class="mb-4">
-          <label for="sourceUrl" class="block text-sm font-medium text-gray-700">M3U URL (Playlist Link)</label>
-          <input type="url" id="sourceUrl" required class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 p-2 border">
+          <label for="sourceUrl" class="block text-sm font-medium text-gray-700">M3U URL (Optional)</label>
+          <input type="url" id="sourceUrl" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 p-2 border">
+          <p class="text-xs text-gray-500 mt-1">Provide a URL **OR** upload a file below. Not both.</p>
+        </div>
+
+        <div class="mb-4">
+          <label for="m3uFile" class="block text-sm font-medium text-gray-700">Upload M3U File (.m3u, Optional)</label>
+          <input type="file" id="m3uFile" accept=".m3u" onchange="handleM3UFileUpload(event)" class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100">
+          <p class="text-xs text-gray-500 mt-1">File must be under 500KB. Leave blank if using a URL.</p>
         </div>
         
         <div class="mt-6 flex justify-end space-x-3">
@@ -780,11 +874,12 @@
 
   <!-- Modal for Generated Link -->
   <div id="link-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-4">
-    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6">
       <h3 id="link-modal-title" class="text-lg font-semibold mb-4 border-b pb-2">User Playlist Link</h3>
+      <div id="link-warning" class="hidden bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-4" role="alert"></div>
       <div class="mb-4">
-        <label for="generated-link" class="block text-sm font-medium text-gray-700">Copy this URL for the user:</label>
-        <input type="text" id="generated-link" readonly class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border bg-gray-50 text-sm overflow-x-auto">
+        <label for="generated-link" class="block text-sm font-medium text-gray-700">Copy this URL (or content) for the user:</label>
+        <textarea id="generated-link" rows="5" readonly class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border bg-gray-50 text-sm overflow-x-auto resize-none"></textarea>
       </div>
       <div class="mt-6 flex justify-end space-x-3">
         <button type="button" onclick="closeLinkModal()" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-lg transition duration-150">Close</button>
@@ -804,3 +899,4 @@
 
 </body>
 </html>
+
